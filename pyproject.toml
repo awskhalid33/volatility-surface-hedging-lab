@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lse-fm-vol-project"
+version = "0.1.0"
+description = "Volatility surface and hedging research platform"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Aws Khalid" }]
+dependencies = []
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

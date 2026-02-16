@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.DS_Store
+
+outputs/
+data/sample_option_chain.csv
+data/historical_option_chain.csv
+data/live_option_chain.csv
