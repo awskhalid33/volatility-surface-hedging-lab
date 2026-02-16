@@ -1,6 +1,6 @@
 # Volatility Surface and Dynamic Hedging Research Platform
 
-This repository is a complete quant project designed to demonstrate MSc Financial Mathematics readiness: no-arbitrage surface construction, model calibration, model comparison, dynamic hedging, and rolling out-of-sample evaluation.
+This repository is a personal quant project focused on no-arbitrage surface construction, model calibration, model comparison, dynamic hedging, and rolling out-of-sample evaluation.
 
 ## Executive Summary
 
