@@ -1,6 +1,11 @@
 import math
-import random
 from dataclasses import dataclass
+
+from .optimisation import (
+    halton_points,
+    levenberg_marquardt,
+    map_unit_to_bounds,
+)
 
 
 @dataclass(frozen=True)
@@ -105,8 +110,8 @@ def _sse(
     return err
 
 
-def _clamp(value: float, low: float, high: float) -> float:
-    return max(low, min(high, value))
+def _from_vector(x: list[float], beta: float) -> SABRParams:
+    return SABRParams(alpha=x[0], beta=beta, rho=x[1], nu=x[2])
 
 
 def fit_sabr_from_observations(
@@ -134,67 +139,61 @@ def fit_sabr_from_observations(
     iv_max = max(implied_vols)
     iv_mean = sum(implied_vols) / len(implied_vols)
 
-    bounds = {
-        "alpha": (max(1e-4, 0.2 * iv_min), max(5.0, 3.0 * iv_max)),
-        "rho": (-0.999, 0.999),
-        "nu": (1e-4, 5.0),
-    }
+    bounds = [
+        (max(1e-4, 0.2 * iv_min), max(5.0, 3.0 * iv_max)),  # alpha
+        (-0.999, 0.999),  # rho
+        (1e-4, 5.0),  # nu
+    ]
 
-    rng = random.Random(seed)
-    best = None
-    best_err = float("inf")
+    def residual_fn(x: list[float]) -> list[float]:
+        p = _from_vector(x, beta=beta)
+        residuals = [sabr_implied_vol(forward, k, maturity, p) - iv for k, iv in zip(strikes, implied_vols)]
+        # Keep a fixed-length residual vector and softly penalise near-boundary instability.
+        boundary_penalty = 0.0
+        boundary_penalty += max(0.0, abs(p.rho) - 0.98)
+        boundary_penalty += max(0.0, 1e-3 - p.alpha)
+        boundary_penalty += max(0.0, 1e-3 - p.nu)
+        residuals.append(10.0 * boundary_penalty)
+        return residuals
 
-    for _ in range(random_trials):
-        candidate = SABRParams(
-            alpha=rng.uniform(*bounds["alpha"]),
-            beta=beta,
-            rho=rng.uniform(*bounds["rho"]),
-            nu=rng.uniform(*bounds["nu"]),
+    deterministic_starts = [
+        [max(1e-4, iv_mean), -0.1, 0.5],
+        [max(1e-4, 0.7 * iv_mean), -0.4, 0.8],
+        [max(1e-4, 1.2 * iv_mean), 0.2, 0.4],
+    ]
+    deterministic_starts = [
+        [max(bounds[i][0], min(bounds[i][1], x[i])) for i in range(3)]
+        for x in deterministic_starts
+    ]
+
+    n_halton = max(5, min(16, random_trials // 700))
+    max_iter = max(60, min(200, local_iters))
+    halton = halton_points(n_halton, dimension=3)
+    if halton:
+        shift = seed % len(halton)
+        halton = halton[shift:] + halton[:shift]
+    starts = deterministic_starts + [map_unit_to_bounds(p, bounds) for p in halton]
+
+    best_result = None
+    best_cost = float("inf")
+    for idx, x0 in enumerate(starts):
+        result = levenberg_marquardt(
+            residual_fn=residual_fn,
+            x0=x0,
+            bounds=bounds,
+            max_iter=max_iter,
+            damping0=1e-2 if idx < len(deterministic_starts) else 4e-2,
         )
-        if not _is_valid(candidate):
-            continue
-        err = _sse(forward, strikes, maturity, implied_vols, candidate)
-        if err < best_err:
-            best = candidate
-            best_err = err
+        if result.cost < best_cost:
+            best_result = result
+            best_cost = result.cost
 
-    if best is None:
-        # deterministic fallback around average vol level
-        best = SABRParams(alpha=max(1e-4, iv_mean), beta=beta, rho=0.0, nu=0.5)
-        best_err = _sse(forward, strikes, maturity, implied_vols, best)
+    if best_result is None:
+        raise RuntimeError("SABR calibration failed: optimisation did not produce a candidate")
 
-    step = {
-        "alpha": max(1e-4, 0.08 * iv_mean),
-        "rho": 0.06,
-        "nu": 0.08,
-    }
+    best = _from_vector(best_result.x, beta=beta)
+    if not _is_valid(best):
+        raise RuntimeError("SABR calibration failed: best candidate violated bounds")
 
-    for _ in range(local_iters):
-        improved = False
-        for key in ("alpha", "rho", "nu"):
-            for direction in (-1.0, 1.0):
-                kwargs = {
-                    "alpha": best.alpha,
-                    "beta": beta,
-                    "rho": best.rho,
-                    "nu": best.nu,
-                }
-                proposed = kwargs[key] + direction * step[key]
-                low, high = bounds[key]
-                kwargs[key] = _clamp(proposed, low, high)
-                candidate = SABRParams(**kwargs)
-                if not _is_valid(candidate):
-                    continue
-                err = _sse(forward, strikes, maturity, implied_vols, candidate)
-                if err + 1e-16 < best_err:
-                    best = candidate
-                    best_err = err
-                    improved = True
-        if not improved:
-            for key in step:
-                step[key] *= 0.7
-            if max(step.values()) < 1e-5:
-                break
-
-    rmse = math.sqrt(best_err / len(strikes))
+    rmse = math.sqrt(_sse(forward, strikes, maturity, implied_vols, best) / len(strikes))
     return best, rmse

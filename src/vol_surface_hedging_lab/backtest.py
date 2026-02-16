@@ -2,7 +2,8 @@ import math
 import random
 from dataclasses import asdict, dataclass
 
-from .black_scholes import bs_call_delta, bs_call_price, bs_call_vega
+from .black_scholes import bs_call_price
+from .hedging_common import clamp, compute_desired_positions, summary_stats
 from .surface import SVISurfaceModel
 
 
@@ -35,10 +36,6 @@ class MarketScenario:
     regimes: list[int]
 
 
-def _clamp(x: float, low: float, high: float) -> float:
-    return max(low, min(high, x))
-
-
 def _regime_transition(current_regime: int, cfg: HedgingConfig, rng: random.Random) -> int:
     u = rng.random()
     if current_regime == 0:
@@ -54,7 +51,7 @@ def _market_call_vol(base_vol: float, spot: float, strike: float, tau: float) ->
     curvature = 0.18 * abs(log_m)
     term_bump = 0.015 * math.exp(-3.0 * tau)
     vol = base_vol * (1.0 + skew + curvature) + term_bump
-    return _clamp(vol, 0.05, 2.0)
+    return clamp(vol, 0.05, 2.0)
 
 
 def _market_call_price(
@@ -110,97 +107,6 @@ def _simulate_market_scenarios(cfg: HedgingConfig) -> list[MarketScenario]:
     return scenarios
 
 
-def _compute_desired_positions(
-    strategy: str,
-    surface: SVISurfaceModel,
-    cfg: HedgingConfig,
-    spot: float,
-    tau_target: float,
-    tau_hedge: float,
-) -> tuple[float, float]:
-    if strategy == "unhedged":
-        return 0.0, 0.0
-    if tau_target <= 0.0:
-        return 0.0, 0.0
-
-    tau_target_eff = max(1e-6, tau_target)
-    model_vol_target = surface.implied_volatility(
-        spot=spot,
-        strike=cfg.target_strike,
-        maturity=tau_target_eff,
-        rate=cfg.rate,
-        dividend=cfg.dividend,
-    )
-    delta_target = bs_call_delta(
-        spot=spot,
-        strike=cfg.target_strike,
-        maturity=tau_target_eff,
-        rate=cfg.rate,
-        dividend=cfg.dividend,
-        vol=model_vol_target,
-    )
-
-    if strategy == "delta":
-        stock = _clamp(
-            delta_target, -cfg.max_abs_stock_position, cfg.max_abs_stock_position
-        )
-        return stock, 0.0
-
-    if strategy != "delta-vega":
-        raise ValueError(f"unknown strategy: {strategy}")
-
-    tau_hedge_eff = max(1e-6, tau_hedge)
-    model_vol_hedge = surface.implied_volatility(
-        spot=spot,
-        strike=cfg.hedge_strike,
-        maturity=tau_hedge_eff,
-        rate=cfg.rate,
-        dividend=cfg.dividend,
-    )
-    vega_target = bs_call_vega(
-        spot=spot,
-        strike=cfg.target_strike,
-        maturity=tau_target_eff,
-        rate=cfg.rate,
-        dividend=cfg.dividend,
-        vol=model_vol_target,
-    )
-    delta_hedge = bs_call_delta(
-        spot=spot,
-        strike=cfg.hedge_strike,
-        maturity=tau_hedge_eff,
-        rate=cfg.rate,
-        dividend=cfg.dividend,
-        vol=model_vol_hedge,
-    )
-    vega_hedge = bs_call_vega(
-        spot=spot,
-        strike=cfg.hedge_strike,
-        maturity=tau_hedge_eff,
-        rate=cfg.rate,
-        dividend=cfg.dividend,
-        vol=model_vol_hedge,
-    )
-
-    if abs(vega_hedge) < 1e-8:
-        stock = _clamp(
-            delta_target, -cfg.max_abs_stock_position, cfg.max_abs_stock_position
-        )
-        return stock, 0.0
-
-    hedge_option_units = vega_target / vega_hedge
-    hedge_option_units = _clamp(
-        hedge_option_units,
-        -cfg.max_abs_hedge_option_position,
-        cfg.max_abs_hedge_option_position,
-    )
-    stock_units = delta_target - hedge_option_units * delta_hedge
-    stock_units = _clamp(
-        stock_units, -cfg.max_abs_stock_position, cfg.max_abs_stock_position
-    )
-    return stock_units, hedge_option_units
-
-
 def _portfolio_value(
     cash: float,
     stock_units: float,
@@ -248,13 +154,18 @@ def _evaluate_strategy_on_scenario(
     )
 
     cash += target_price0
-    desired_stock, desired_hedge = _compute_desired_positions(
+    desired_stock, desired_hedge = compute_desired_positions(
         strategy=strategy,
         surface=surface,
-        cfg=cfg,
         spot=spot0,
+        rate=cfg.rate,
+        dividend=cfg.dividend,
+        target_strike=cfg.target_strike,
+        hedge_strike=cfg.hedge_strike,
         tau_target=cfg.target_maturity,
         tau_hedge=cfg.hedge_maturity,
+        max_abs_stock_position=cfg.max_abs_stock_position,
+        max_abs_hedge_option_position=cfg.max_abs_hedge_option_position,
     )
     stock_trade = desired_stock - stock_units
     hedge_trade = desired_hedge - hedge_option_units
@@ -316,13 +227,18 @@ def _evaluate_strategy_on_scenario(
         values.append(value)
 
         if step < cfg.steps and tau_target > 0.0:
-            desired_stock, desired_hedge = _compute_desired_positions(
+            desired_stock, desired_hedge = compute_desired_positions(
                 strategy=strategy,
                 surface=surface,
-                cfg=cfg,
                 spot=spot,
+                rate=cfg.rate,
+                dividend=cfg.dividend,
+                target_strike=cfg.target_strike,
+                hedge_strike=cfg.hedge_strike,
                 tau_target=tau_target,
                 tau_hedge=tau_hedge,
+                max_abs_stock_position=cfg.max_abs_stock_position,
+                max_abs_hedge_option_position=cfg.max_abs_hedge_option_position,
             )
             stock_trade = desired_stock - stock_units
             hedge_trade = desired_hedge - hedge_option_units
@@ -363,33 +279,6 @@ def _evaluate_strategy_on_scenario(
     }
 
 
-def _quantile(sorted_vals: list[float], q: float) -> float:
-    if not sorted_vals:
-        return 0.0
-    idx = max(0, min(len(sorted_vals) - 1, int(q * (len(sorted_vals) - 1))))
-    return sorted_vals[idx]
-
-
-def _summary_stats(values: list[float]) -> dict:
-    n = len(values)
-    mean = sum(values) / n
-    variance = sum((x - mean) ** 2 for x in values) / n
-    std = math.sqrt(variance)
-    ordered = sorted(values)
-    var95 = _quantile(ordered, 0.05)
-    tail = [x for x in ordered if x <= var95]
-    es95 = (sum(tail) / len(tail)) if tail else var95
-    return {
-        "mean_pnl": mean,
-        "std_pnl": std,
-        "min_pnl": ordered[0],
-        "max_pnl": ordered[-1],
-        "var_95": var95,
-        "expected_shortfall_95": es95,
-        "positive_ratio": sum(1 for x in values if x > 0.0) / n,
-    }
-
-
 def run_hedging_experiment(surface: SVISurfaceModel, cfg: HedgingConfig) -> dict:
     scenarios = _simulate_market_scenarios(cfg)
     strategies = ["unhedged", "delta", "delta-vega"]
@@ -412,7 +301,7 @@ def run_hedging_experiment(surface: SVISurfaceModel, cfg: HedgingConfig) -> dict
 
     metrics = {}
     for strategy in strategies:
-        stats = _summary_stats(strategy_to_terminal[strategy])
+        stats = summary_stats(strategy_to_terminal[strategy])
         avg_cost = sum(strategy_to_costs[strategy]) / len(strategy_to_costs[strategy])
         stats["avg_transaction_cost"] = avg_cost
         metrics[strategy] = stats
@@ -428,6 +317,7 @@ def run_hedging_experiment(surface: SVISurfaceModel, cfg: HedgingConfig) -> dict
     return {
         "config": asdict(cfg),
         "strategy_metrics": metrics,
+        "terminal_pnl_by_strategy": strategy_to_terminal,
         "representative_path_values": representative_paths,
     }
 

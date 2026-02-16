@@ -1,6 +1,11 @@
 import math
-import random
 from dataclasses import dataclass
+
+from .optimisation import (
+    halton_points,
+    levenberg_marquardt,
+    map_unit_to_bounds,
+)
 
 
 @dataclass(frozen=True)
@@ -39,8 +44,8 @@ def _sse(log_moneyness: list[float], total_vars: list[float], params: SVIParams)
     return err
 
 
-def _clamp(value: float, low: float, high: float) -> float:
-    return max(low, min(high, value))
+def _from_vector(x: list[float]) -> SVIParams:
+    return SVIParams(a=x[0], b=x[1], rho=x[2], m=x[3], sigma=x[4])
 
 
 def fit_raw_svi(
@@ -59,74 +64,73 @@ def fit_raw_svi(
     k_max = max(log_moneyness)
     w_min = min(total_vars)
     w_max = max(total_vars)
+    w_mid = total_vars[len(total_vars) // 2]
 
-    bounds = {
-        "a": (-0.25 * max(0.01, w_max), max(0.01, 1.5 * w_max)),
-        "b": (1e-6, 5.0),
-        "rho": (-0.999, 0.999),
-        "m": (k_min - 0.6, k_max + 0.6),
-        "sigma": (1e-4, 3.0),
-    }
+    bounds = [
+        (-0.25 * max(0.01, w_max), max(0.01, 1.5 * w_max)),  # a
+        (1e-6, 5.0),  # b
+        (-0.999, 0.999),  # rho
+        (k_min - 0.6, k_max + 0.6),  # m
+        (1e-4, 3.0),  # sigma
+    ]
 
-    rng = random.Random(seed)
-    best = None
-    best_err = float("inf")
+    def residual_fn(x: list[float]) -> list[float]:
+        p = _from_vector(x)
+        residuals = [svi_total_variance(k, p) - w for k, w in zip(log_moneyness, total_vars)]
+        min_total_var = p.a + p.b * p.sigma * math.sqrt(max(1e-12, 1.0 - p.rho * p.rho))
+        penalty = 0.0
+        if p.b <= 0.0:
+            penalty += abs(p.b) + 1.0
+        if p.sigma <= 0.0:
+            penalty += abs(p.sigma) + 1.0
+        if abs(p.rho) >= 1.0:
+            penalty += abs(p.rho) - 0.999 + 1.0
+        if min_total_var <= 0.0:
+            penalty += abs(min_total_var) + 1.0
+        residuals.append(25.0 * penalty)
+        return residuals
 
-    for _ in range(random_trials):
-        candidate = SVIParams(
-            a=rng.uniform(*bounds["a"]),
-            b=rng.uniform(*bounds["b"]),
-            rho=rng.uniform(*bounds["rho"]),
-            m=rng.uniform(*bounds["m"]),
-            sigma=rng.uniform(*bounds["sigma"]),
+    deterministic_starts = [
+        [0.5 * w_min, 0.15, -0.25, 0.0, 0.2],
+        [0.2 * w_mid, 0.35, -0.5, 0.0, 0.35],
+        [0.8 * w_min, 0.08, -0.1, 0.0, 0.12],
+        [0.0, 0.5 * max(0.03, w_mid), -0.2, 0.05, 0.3],
+    ]
+    deterministic_starts = [
+        [max(bounds[i][0], min(bounds[i][1], x[i])) for i in range(5)]
+        for x in deterministic_starts
+    ]
+
+    # Preserve compatibility with historical parameters while moving to proper optimisation.
+    n_halton = max(6, min(20, random_trials // 600))
+    max_iter = max(60, min(220, local_iters))
+    halton = halton_points(n_halton, dimension=5)
+    if halton:
+        shift = seed % len(halton)
+        halton = halton[shift:] + halton[:shift]
+    starts = deterministic_starts + [map_unit_to_bounds(p, bounds) for p in halton]
+
+    best_result = None
+    best_cost = float("inf")
+    for idx, x0 in enumerate(starts):
+        result = levenberg_marquardt(
+            residual_fn=residual_fn,
+            x0=x0,
+            bounds=bounds,
+            max_iter=max_iter,
+            damping0=1e-2 if idx < len(deterministic_starts) else 5e-2,
         )
-        if not _is_valid(candidate):
-            continue
-        err = _sse(log_moneyness, total_vars, candidate)
-        if err < best_err:
-            best = candidate
-            best_err = err
+        if result.cost < best_cost:
+            best_result = result
+            best_cost = result.cost
 
-    if best is None:
-        raise RuntimeError("SVI calibration failed: no valid random initializations")
+    if best_result is None:
+        raise RuntimeError("SVI calibration failed: optimisation did not produce a candidate")
 
-    step = {
-        "a": max(1e-4, 0.05 * max(w_max, 0.01)),
-        "b": 0.08,
-        "rho": 0.05,
-        "m": 0.03,
-        "sigma": 0.03,
-    }
-
-    for _ in range(local_iters):
-        improved = False
-        for key in ("a", "b", "rho", "m", "sigma"):
-            for direction in (-1.0, 1.0):
-                kwargs = {
-                    "a": best.a,
-                    "b": best.b,
-                    "rho": best.rho,
-                    "m": best.m,
-                    "sigma": best.sigma,
-                }
-                proposed = kwargs[key] + direction * step[key]
-                low, high = bounds[key]
-                kwargs[key] = _clamp(proposed, low, high)
-                candidate = SVIParams(**kwargs)
-                if not _is_valid(candidate):
-                    continue
-                err = _sse(log_moneyness, total_vars, candidate)
-                if err + 1e-16 < best_err:
-                    best = candidate
-                    best_err = err
-                    improved = True
-        if not improved:
-            for key in step:
-                step[key] *= 0.65
-            if max(step.values()) < 1e-5:
-                break
-
-    return best
+    final = _from_vector(best_result.x)
+    if not _is_valid(final):
+        raise RuntimeError("SVI calibration failed: best candidate violated constraints")
+    return final
 
 
 def fit_svi_from_observations(

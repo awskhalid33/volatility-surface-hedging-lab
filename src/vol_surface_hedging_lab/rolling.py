@@ -2,7 +2,7 @@ import math
 from dataclasses import asdict, dataclass
 from datetime import date
 
-from .black_scholes import bs_call_delta, bs_call_vega
+from .hedging_common import compute_desired_positions, summary_stats
 from .pipeline import run_surface_pipeline
 from .surface import SVISurfaceModel
 from .types import OptionQuote
@@ -96,113 +96,6 @@ def _interpolate_call_price(rows: list[OptionQuote], strike: float) -> float:
     return ordered[-1].call_mid
 
 
-def _compute_desired_positions(
-    strategy: str,
-    surface: SVISurfaceModel,
-    cfg: RollingRecalibrationConfig,
-    spot: float,
-    rate: float,
-    dividend: float,
-    target_strike: float,
-    hedge_strike: float,
-    tau_target: float,
-    tau_hedge: float,
-) -> tuple[float, float]:
-    if strategy == "unhedged" or tau_target <= 0.0:
-        return 0.0, 0.0
-
-    tau_target_eff = max(1e-6, tau_target)
-    model_vol_target = surface.implied_volatility(
-        spot=spot,
-        strike=target_strike,
-        maturity=tau_target_eff,
-        rate=rate,
-        dividend=dividend,
-    )
-    delta_target = bs_call_delta(
-        spot=spot,
-        strike=target_strike,
-        maturity=tau_target_eff,
-        rate=rate,
-        dividend=dividend,
-        vol=model_vol_target,
-    )
-    if strategy == "delta":
-        stock = max(
-            -cfg.max_abs_stock_position,
-            min(cfg.max_abs_stock_position, delta_target),
-        )
-        return stock, 0.0
-
-    if strategy != "delta-vega":
-        raise ValueError(f"Unknown strategy: {strategy}")
-
-    tau_hedge_eff = max(1e-6, tau_hedge)
-    model_vol_hedge = surface.implied_volatility(
-        spot=spot,
-        strike=hedge_strike,
-        maturity=tau_hedge_eff,
-        rate=rate,
-        dividend=dividend,
-    )
-    vega_target = bs_call_vega(
-        spot=spot,
-        strike=target_strike,
-        maturity=tau_target_eff,
-        rate=rate,
-        dividend=dividend,
-        vol=model_vol_target,
-    )
-    delta_hedge = bs_call_delta(
-        spot=spot,
-        strike=hedge_strike,
-        maturity=tau_hedge_eff,
-        rate=rate,
-        dividend=dividend,
-        vol=model_vol_hedge,
-    )
-    vega_hedge = bs_call_vega(
-        spot=spot,
-        strike=hedge_strike,
-        maturity=tau_hedge_eff,
-        rate=rate,
-        dividend=dividend,
-        vol=model_vol_hedge,
-    )
-    if abs(vega_hedge) < 1e-8:
-        return max(-cfg.max_abs_stock_position, min(cfg.max_abs_stock_position, delta_target)), 0.0
-
-    hedge_units = vega_target / vega_hedge
-    hedge_units = max(
-        -cfg.max_abs_hedge_option_position,
-        min(cfg.max_abs_hedge_option_position, hedge_units),
-    )
-    stock_units = delta_target - hedge_units * delta_hedge
-    stock_units = max(-cfg.max_abs_stock_position, min(cfg.max_abs_stock_position, stock_units))
-    return stock_units, hedge_units
-
-
-def _summary_stats(values: list[float]) -> dict:
-    n = len(values)
-    mean = sum(values) / n
-    variance = sum((x - mean) ** 2 for x in values) / n
-    std = math.sqrt(variance)
-    ordered = sorted(values)
-    q5_idx = max(0, int(0.05 * (n - 1)))
-    var95 = ordered[q5_idx]
-    tail = [x for x in ordered if x <= var95]
-    es95 = sum(tail) / len(tail) if tail else var95
-    return {
-        "mean_pnl": mean,
-        "std_pnl": std,
-        "min_pnl": ordered[0],
-        "max_pnl": ordered[-1],
-        "var_95": var95,
-        "expected_shortfall_95": es95,
-        "positive_ratio": sum(1 for x in values if x > 0.0) / n,
-    }
-
-
 def _strategy_backtest(
     strategy: str,
     snapshots: list[tuple[date, str, list[OptionQuote], SVISurfaceModel]],
@@ -250,10 +143,9 @@ def _strategy_backtest(
 
         if idx == 0:
             cash += target_price
-            desired_stock, desired_hedge = _compute_desired_positions(
+            desired_stock, desired_hedge = compute_desired_positions(
                 strategy=strategy,
                 surface=surface,
-                cfg=cfg,
                 spot=spot,
                 rate=rate,
                 dividend=dividend,
@@ -261,6 +153,8 @@ def _strategy_backtest(
                 hedge_strike=hedge_strike,
                 tau_target=tau_target,
                 tau_hedge=tau_hedge,
+                max_abs_stock_position=cfg.max_abs_stock_position,
+                max_abs_hedge_option_position=cfg.max_abs_hedge_option_position,
             )
             stock_trade = desired_stock - stock_units
             hedge_trade = desired_hedge - hedge_units
@@ -282,10 +176,9 @@ def _strategy_backtest(
         if is_last or tau_target <= 0.0:
             break
 
-        desired_stock, desired_hedge = _compute_desired_positions(
+        desired_stock, desired_hedge = compute_desired_positions(
             strategy=strategy,
             surface=surface,
-            cfg=cfg,
             spot=spot,
             rate=rate,
             dividend=dividend,
@@ -293,6 +186,8 @@ def _strategy_backtest(
             hedge_strike=hedge_strike,
             tau_target=tau_target,
             tau_hedge=tau_hedge,
+            max_abs_stock_position=cfg.max_abs_stock_position,
+            max_abs_hedge_option_position=cfg.max_abs_hedge_option_position,
         )
         stock_trade = desired_stock - stock_units
         hedge_trade = desired_hedge - hedge_units
@@ -458,7 +353,7 @@ def run_rolling_recalibration_experiment(
 
     metrics = {}
     for strategy in strategies:
-        stats = _summary_stats(terminal_by_strategy[strategy])
+        stats = summary_stats(terminal_by_strategy[strategy])
         stats["avg_transaction_cost"] = sum(cost_by_strategy[strategy]) / len(
             cost_by_strategy[strategy]
         )

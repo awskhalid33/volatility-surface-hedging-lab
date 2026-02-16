@@ -25,3 +25,22 @@ def test_sabr_fit_roundtrip_for_generated_smile():
     mse = sum((a - b) ** 2 for a, b in zip(fitted, ivs)) / len(strikes)
     assert rmse < 0.05
     assert mse < 0.0025
+
+
+def test_sabr_handles_near_atm_cluster_stably():
+    forward = 100.0
+    maturity = 0.4
+    strikes = [99.5, 99.8, 100.0, 100.2, 100.5]
+    ivs = [0.21, 0.205, 0.202, 0.204, 0.208]
+
+    params, rmse = fit_sabr_from_observations(
+        forward=forward,
+        strikes=strikes,
+        maturity=maturity,
+        implied_vols=ivs,
+        beta=1.0,
+        seed=5,
+    )
+    fitted = [sabr_implied_vol(forward, k, maturity, params) for k in strikes]
+    assert all(v > 0.0 for v in fitted)
+    assert rmse < 0.03

@@ -24,6 +24,7 @@ from vol_surface_hedging_lab.synthetic_data import (
     generate_historical_option_rows,
     write_option_rows_csv,
 )
+from vol_surface_hedging_lab.visualisation import generate_visual_artifacts
 
 
 def _write_rows(rows: list[dict[str, str]], path: Path) -> None:
@@ -144,7 +145,16 @@ def main() -> None:
         encoding="utf-8",
     )
 
-    print("Wrote all experiment artifacts to outputs/")
+    generated_figures = generate_visual_artifacts(
+        surface_result=surface_result,
+        model_result=model_result,
+        hedging_result=hedge_result,
+        rolling_result=rolling_result,
+        output_dir=outputs_dir,
+    )
+
+    print("Wrote all experiment artefacts to outputs/")
+    print(f"Generated {len(generated_figures)} visual files.")
 
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@ from .rolling import (
 from .sabr import SABRParams, fit_sabr_from_observations, sabr_implied_vol
 from .svi import SVIParams, fit_svi_from_observations, svi_total_variance
 from .surface import SVISurfaceModel
+from .visualisation import generate_visual_artifacts
 from .yahoo_data import fetch_yahoo_option_chain_rows
 
 __all__ = [
@@ -35,4 +36,5 @@ __all__ = [
     "sabr_implied_vol",
     "svi_total_variance",
     "fetch_yahoo_option_chain_rows",
+    "generate_visual_artifacts",
 ]

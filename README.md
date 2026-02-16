@@ -1,118 +1,128 @@
-# Volatility Surface and Dynamic Hedging Research Platform
+# Volatility Surface and Dynamic Hedging Lab
 
-This repository is a personal quant project focused on no-arbitrage surface construction, model calibration, model comparison, dynamic hedging, and rolling out-of-sample evaluation.
+Personal quantitative research project for option-surface modelling, model comparison, dynamic hedging, and rolling out-of-sample evaluation.
 
-## Executive Summary
+## Project Overview
 
-The project builds and tests an end-to-end derivatives research stack:
+This repository builds an end-to-end derivatives research pipeline:
 
-1. Convert option prices into implied-volatility surfaces.
-2. Enforce static no-arbitrage diagnostics.
-3. Calibrate and compare `SVI` and `SABR` smiles.
-4. Backtest `unhedged`, `delta`, and `delta-vega` hedging with transaction costs.
-5. Recalibrate surfaces across rolling historical snapshots and evaluate out-of-sample robustness.
+1. Convert option prices to implied volatility.
+2. Run static no-arbitrage checks.
+3. Calibrate smile models (`SVI`, `SABR`) using optimisation-based fitting.
+4. Compare models in-sample and out-of-sample.
+5. Backtest hedging policies (`unhedged`, `delta`, `delta-vega`) with transaction costs.
+6. Recalibrate surfaces through rolling windows and evaluate stability.
+7. Generate visual artefacts (SVG plots) alongside JSON and Markdown reports.
 
-This README contains the project summary and empirical findings in place of a separate research paper.
+## What Was Upgraded
 
-## Key Results
+- Replaced random-search-only calibration with bounded Levenberg–Marquardt optimisation (multi-start).
+- Refactored duplicated hedging/statistics logic into a shared module.
+- Added visualisation outputs:
+  - smile fit chart
+  - model RMSE comparison chart
+  - terminal P&L histograms
+  - rolling calibration RMSE trend
+- Added stronger tests:
+  - near-ATM SABR stability case
+  - extreme-moneyness SVI case
+  - integration test covering the full workflow on a compact dataset
 
-Results below come from the current generated artifacts in `outputs/`:
+## Synthetic Benchmark Results
 
-- `outputs/surface_report.md`
-- `outputs/model_comparison_report.md`
-- `outputs/hedging_backtest_report.md`
-- `outputs/rolling_recalibration_report.md`
-
-### 1) Static Arbitrage Diagnostics (sample chain)
-
-- Monotonicity violations: `0`
-- Convexity violations: `0`
-- Calendar total-variance violations: `0`
-
-Interpretation: the generated sample surface passes core static no-arbitrage checks.
-
-### 2) Volatility Model Comparison (SVI vs SABR, CV folds = 3)
-
-- In-sample RMSE(IV): `SVI = 0.00215406`, `SABR = 0.00406937`
-- Out-of-sample CV RMSE(IV): `SVI = 0.02177206`, `SABR = 0.00788022`
-- In-sample winner: `SVI`
-- Out-of-sample winner: `SABR`
-
-Interpretation: SVI fits training data tighter; SABR generalizes better in cross-validation on this sample.
-
-### 3) Dynamic Hedging Backtest (regime-switching scenarios, 400 paths)
-
-- `delta` hedging std reduction vs unhedged: `90.39%`
-- `delta-vega` hedging std reduction vs unhedged: `86.61%`
-- Tail risk (ES 95%):
-  - unhedged: `-27.406009`
-  - delta: `-3.861296`
-  - delta-vega: `-2.577188`
-
-Interpretation: both hedging policies materially reduce risk; delta-vega improves extreme-loss tail behavior in this setup.
-
-### 4) Rolling Recalibration Out-of-Sample Study (25 windows)
-
-- Average calibration RMSE(w): `0.00057172`
-- Std reduction vs unhedged:
-  - delta: `41.67%`
-  - delta-vega: `88.44%`
-- Average transaction cost:
-  - delta: `0.103290`
-  - delta-vega: `0.084790`
-
-Interpretation: with re-calibration and contract roll windows, delta-vega remains robust and risk-efficient.
-
-## What Was Implemented
-
-- Option-chain ingestion and validation from CSV.
-- Black-Scholes pricing, implied-vol inversion, and Greeks (`delta`, `vega`).
-- Static no-arbitrage diagnostics:
-  - call monotonicity by strike
-  - call convexity (butterfly condition)
-  - calendar monotonicity of total variance
-- `SVI` calibration and maturity interpolation in total-variance space.
-- `SABR` (Hagan approximation) calibration.
-- Cross-validated model comparison (`SVI` vs `SABR`).
-- Dynamic hedging simulation:
-  - `unhedged`
-  - `delta`
-  - `delta-vega`
-  - transaction cost accounting
-- Rolling re-calibration and out-of-sample window study.
-- Optional live option-chain ingestion from Yahoo Finance.
-- Reproducible artifact generation to JSON + Markdown reports.
-
-## One-Command Reproduction
-
-Run everything and regenerate all outputs:
+These figures come from the latest deterministic synthetic run:
 
 ```bash
 PYTHONPATH=src python3 scripts/run_full_study.py
 ```
 
-This writes:
+### 1) Static arbitrage diagnostics
 
-- `outputs/surface_results.json`
+- Monotonicity violations: `0`
+- Convexity violations: `0`
+- Calendar total-variance violations: `0`
+
+### 2) Model comparison (`SVI` vs `SABR`, 3-fold CV)
+
+- In-sample RMSE (IV): `SVI=0.00025257`, `SABR=0.00406937`
+- Out-of-sample CV RMSE (IV): `SVI=0.00267168`, `SABR=0.00666528`
+- In-sample winner: `SVI`
+- Out-of-sample winner: `SVI`
+
+### 3) Dynamic hedging (400 paths)
+
+- `delta` standard-deviation reduction vs unhedged: `89.65%`
+- `delta-vega` standard-deviation reduction vs unhedged: `86.38%`
+- ES 95%:
+  - unhedged: `-27.406009`
+  - delta: `-4.111110`
+  - delta-vega: `-2.749126`
+
+### 4) Rolling recalibration (25 windows)
+
+- Average calibration RMSE(w): `0.00013942`
+- Standard-deviation reduction vs unhedged:
+  - delta: `41.65%`
+  - delta-vega: `88.95%`
+
+## Synthetic vs Live Results
+
+- The benchmark numbers above are **synthetic** and deterministic (reproducible).
+- A dedicated **live snapshot** workflow is included for real market data.
+- Keep synthetic and live reports separate when presenting conclusions.
+
+## One-Command Reproduction
+
+Run the full synthetic study:
+
+```bash
+PYTHONPATH=src python3 scripts/run_full_study.py
+```
+
+Produced reports:
+
 - `outputs/surface_report.md`
-- `outputs/model_comparison_results.json`
 - `outputs/model_comparison_report.md`
-- `outputs/hedging_backtest_results.json`
 - `outputs/hedging_backtest_report.md`
-- `outputs/rolling_recalibration_results.json`
 - `outputs/rolling_recalibration_report.md`
 
-Note: `run_full_study.py` uses deterministic synthetic datasets for reproducibility.
+Produced visual artefacts:
 
-## Component Runs
+- `outputs/fig_smile_fit.svg`
+- `outputs/fig_model_rmse.svg`
+- `outputs/fig_terminal_pnl_hist_unhedged.svg`
+- `outputs/fig_terminal_pnl_hist_delta.svg`
+- `outputs/fig_terminal_pnl_hist_delta-vega.svg`
+- `outputs/fig_rolling_rmse_trend.svg`
 
-### Generate sample option chain
+## Live Snapshot Workflow
+
+Run a live single-snapshot study from Yahoo Finance:
+
+```bash
+PYTHONPATH=src python3 scripts/run_live_snapshot_study.py \
+  --ticker SPY \
+  --output-dir outputs \
+  --max-expiries 4 \
+  --paths 300 \
+  --steps 120
+```
+
+This produces:
+
+- `outputs/live_surface_report.md`
+- `outputs/live_model_comparison_report.md`
+- `outputs/live_hedging_backtest_report.md`
+
+## Component Commands
+
+Generate synthetic sample chain:
 
 ```bash
 PYTHONPATH=src python3 scripts/generate_sample_data.py
 ```
 
-### Surface calibration report
+Surface report:
 
 ```bash
 PYTHONPATH=src python3 scripts/run_research_pipeline.py \
@@ -120,28 +130,23 @@ PYTHONPATH=src python3 scripts/run_research_pipeline.py \
   --output-dir outputs
 ```
 
-### SVI vs SABR comparison report
+Model comparison report:
 
 ```bash
 PYTHONPATH=src python3 scripts/run_model_comparison.py \
   --input data/sample_option_chain.csv \
-  --output-dir outputs \
-  --seed 17 \
-  --sabr-beta 1.0 \
-  --folds 3
+  --output-dir outputs
 ```
 
-### Dynamic hedging report
+Hedging report:
 
 ```bash
 PYTHONPATH=src python3 scripts/run_hedging_backtest.py \
   --input data/sample_option_chain.csv \
-  --output-dir outputs \
-  --paths 400 \
-  --steps 126
+  --output-dir outputs
 ```
 
-### Historical rolling study
+Rolling study:
 
 ```bash
 PYTHONPATH=src python3 scripts/generate_historical_data.py \
@@ -150,47 +155,41 @@ PYTHONPATH=src python3 scripts/generate_historical_data.py \
 
 PYTHONPATH=src python3 scripts/run_rolling_recalibration.py \
   --input data/historical_option_chain.csv \
-  --output-dir outputs \
-  --max-windows 25 \
-  --max-rebalance-dates 100
+  --output-dir outputs
 ```
 
-### Live market snapshot workflow (optional)
+Generate charts from existing JSON outputs:
 
 ```bash
-PYTHONPATH=src python3 scripts/fetch_yahoo_option_chain.py \
-  --ticker SPY \
-  --output data/live_option_chain.csv \
-  --max-expiries 4
-
-PYTHONPATH=src python3 scripts/run_research_pipeline.py \
-  --input data/live_option_chain.csv \
-  --output-dir outputs
-
-PYTHONPATH=src python3 scripts/run_model_comparison.py \
-  --input data/live_option_chain.csv \
-  --output-dir outputs
+PYTHONPATH=src python3 scripts/generate_visuals.py --output-dir outputs
 ```
 
-## Dataset Format
+## Data Format
 
-Required CSV columns:
+Required CSV fields:
 
 - `valuation_date` (YYYY-MM-DD)
 - `expiry` (YYYY-MM-DD)
-- `maturity` (years, float)
-- `spot` (float)
-- `rate` (continuous risk-free rate, float)
-- `dividend` (continuous dividend yield, float)
-- `strike` (float)
-- `call_mid` (float)
+- `maturity` (years)
+- `spot`
+- `rate` (continuous risk-free rate)
+- `dividend` (continuous dividend yield)
+- `strike`
+- `call_mid`
 
-## Limitations
+## Test Suite
 
-- Current historical data source is synthetic (designed for controlled evaluation).
-- Real exchange microstructure effects (bid-ask, liquidity filters, early close days) are not yet included.
-- SABR calibration currently uses fixed `beta`; dynamic `beta` calibration is not implemented.
+Run tests:
 
-## Next Practical Upgrade
+```bash
+PYTHONPATH=src pytest -q
+```
 
-- Replace synthetic history with real option snapshots and rerun the same pipeline unchanged.
+The suite includes unit tests, calibration edge cases, and a compact end-to-end integration test.
+
+## Current Limitations
+
+- Synthetic history is still the default benchmark dataset.
+- Live-data workflow is snapshot-based rather than a long historical archive.
+- `SABR` calibration currently uses fixed `beta`.
+- Microstructure details (full bid-ask filtering, liquidity constraints, trading calendars) are simplified.
