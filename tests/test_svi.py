@@ -1,6 +1,6 @@
 import math
 
-from lse_fm_vol_project.svi import SVIParams, fit_raw_svi, svi_total_variance
+from vol_surface_hedging_lab.svi import SVIParams, fit_raw_svi, svi_total_variance
 
 
 def test_svi_fit_on_synthetic_data():

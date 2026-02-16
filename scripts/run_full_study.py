@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
 from pathlib import Path
 
-from lse_fm_vol_project.backtest import (
+from vol_surface_hedging_lab.backtest import (
     HedgingConfig,
     render_backtest_markdown,
     run_hedging_experiment,
 )
-from lse_fm_vol_project.data_io import load_option_quotes, write_json
-from lse_fm_vol_project.black_scholes import bs_call_price
-from lse_fm_vol_project.model_comparison import (
+from vol_surface_hedging_lab.data_io import load_option_quotes, write_json
+from vol_surface_hedging_lab.black_scholes import bs_call_price
+from vol_surface_hedging_lab.model_comparison import (
     render_model_comparison_markdown,
     run_model_comparison,
 )
-from lse_fm_vol_project.pipeline import render_markdown_report, run_surface_pipeline
-from lse_fm_vol_project.rolling import (
+from vol_surface_hedging_lab.pipeline import render_markdown_report, run_surface_pipeline
+from vol_surface_hedging_lab.rolling import (
     RollingRecalibrationConfig,
     render_rolling_markdown,
     run_rolling_recalibration_experiment,
 )
-from lse_fm_vol_project.surface import SVISurfaceModel
-from lse_fm_vol_project.synthetic_data import (
+from vol_surface_hedging_lab.surface import SVISurfaceModel
+from vol_surface_hedging_lab.synthetic_data import (
     SyntheticHistoryConfig,
     generate_historical_option_rows,
     write_option_rows_csv,

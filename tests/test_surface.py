@@ -1,5 +1,5 @@
-from lse_fm_vol_project.svi import SVIParams
-from lse_fm_vol_project.surface import SVISurfaceModel
+from vol_surface_hedging_lab.svi import SVIParams
+from vol_surface_hedging_lab.surface import SVISurfaceModel
 
 
 def test_surface_implied_vol_positive_and_stable():

@@ -1,11 +1,11 @@
 from datetime import date
 
-from lse_fm_vol_project.data_io import load_option_quotes
-from lse_fm_vol_project.rolling import (
+from vol_surface_hedging_lab.data_io import load_option_quotes
+from vol_surface_hedging_lab.rolling import (
     RollingRecalibrationConfig,
     run_rolling_recalibration_experiment,
 )
-from lse_fm_vol_project.synthetic_data import (
+from vol_surface_hedging_lab.synthetic_data import (
     SyntheticHistoryConfig,
     generate_historical_option_rows,
     write_option_rows_csv,

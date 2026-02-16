@@ -4,7 +4,7 @@ import math
 from datetime import date, timedelta
 from pathlib import Path
 
-from lse_fm_vol_project.black_scholes import bs_call_price
+from vol_surface_hedging_lab.black_scholes import bs_call_price
 
 
 def smile_vol(spot: float, strike: float, maturity: float) -> float:

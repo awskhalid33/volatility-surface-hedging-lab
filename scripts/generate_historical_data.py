@@ -2,7 +2,7 @@
 import argparse
 from datetime import date
 
-from lse_fm_vol_project.synthetic_data import (
+from vol_surface_hedging_lab.synthetic_data import (
     SyntheticHistoryConfig,
     generate_historical_option_rows,
     write_option_rows_csv,

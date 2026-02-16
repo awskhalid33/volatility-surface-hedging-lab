@@ -1,6 +1,6 @@
-from lse_fm_vol_project.black_scholes import bs_call_price
-from lse_fm_vol_project.model_comparison import run_model_comparison
-from lse_fm_vol_project.types import OptionQuote
+from vol_surface_hedging_lab.black_scholes import bs_call_price
+from vol_surface_hedging_lab.model_comparison import run_model_comparison
+from vol_surface_hedging_lab.types import OptionQuote
 
 
 def _smile_vol(spot: float, strike: float, maturity: float) -> float:

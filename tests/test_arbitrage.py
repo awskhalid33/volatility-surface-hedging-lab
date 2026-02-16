@@ -1,4 +1,4 @@
-from lse_fm_vol_project.arbitrage import (
+from vol_surface_hedging_lab.arbitrage import (
     check_calendar_total_variance,
     check_call_convexity,
     check_call_monotonicity,

@@ -1,6 +1,6 @@
 import math
 
-from lse_fm_vol_project.sabr import fit_sabr_from_observations, sabr_implied_vol
+from vol_surface_hedging_lab.sabr import fit_sabr_from_observations, sabr_implied_vol
 
 
 def test_sabr_fit_roundtrip_for_generated_smile():

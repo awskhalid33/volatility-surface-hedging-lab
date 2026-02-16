@@ -1,4 +1,4 @@
-from lse_fm_vol_project.black_scholes import (
+from vol_surface_hedging_lab.black_scholes import (
     bs_call_delta,
     bs_call_price,
     bs_call_vega,

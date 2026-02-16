@@ -4,6 +4,7 @@ __pycache__/
 .venv/
 venv/
 .DS_Store
+githubquantkey*
 
 outputs/
 data/sample_option_chain.csv

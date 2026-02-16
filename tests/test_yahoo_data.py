@@ -1,4 +1,4 @@
-from lse_fm_vol_project.yahoo_data import _extract_rows_from_result
+from vol_surface_hedging_lab.yahoo_data import _extract_rows_from_result
 
 
 def test_extract_rows_from_result_parses_calls_and_filters_invalid():

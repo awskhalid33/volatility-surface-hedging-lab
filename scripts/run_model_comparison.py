@@ -3,8 +3,8 @@ import argparse
 from collections import defaultdict
 from pathlib import Path
 
-from lse_fm_vol_project.data_io import load_option_quotes, write_json
-from lse_fm_vol_project.model_comparison import (
+from vol_surface_hedging_lab.data_io import load_option_quotes, write_json
+from vol_surface_hedging_lab.model_comparison import (
     render_model_comparison_markdown,
     run_model_comparison,
 )

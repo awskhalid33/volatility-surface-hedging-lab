@@ -2,8 +2,8 @@
 import argparse
 from pathlib import Path
 
-from lse_fm_vol_project.synthetic_data import write_option_rows_csv
-from lse_fm_vol_project.yahoo_data import fetch_yahoo_option_chain_rows
+from vol_surface_hedging_lab.synthetic_data import write_option_rows_csv
+from vol_surface_hedging_lab.yahoo_data import fetch_yahoo_option_chain_rows
 
 
 def parse_args() -> argparse.Namespace:

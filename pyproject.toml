@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "lse-fm-vol-project"
+name = "vol-surface-hedging-lab"
 version = "0.1.0"
 description = "Volatility surface and hedging research platform"
 readme = "README.md"

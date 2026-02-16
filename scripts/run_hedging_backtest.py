@@ -2,14 +2,14 @@
 import argparse
 from pathlib import Path
 
-from lse_fm_vol_project.backtest import (
+from vol_surface_hedging_lab.backtest import (
     HedgingConfig,
     render_backtest_markdown,
     run_hedging_experiment,
 )
-from lse_fm_vol_project.data_io import load_option_quotes, write_json
-from lse_fm_vol_project.pipeline import run_surface_pipeline
-from lse_fm_vol_project.surface import SVISurfaceModel
+from vol_surface_hedging_lab.data_io import load_option_quotes, write_json
+from vol_surface_hedging_lab.pipeline import run_surface_pipeline
+from vol_surface_hedging_lab.surface import SVISurfaceModel
 
 
 def parse_args() -> argparse.Namespace:
