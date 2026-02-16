@@ -261,7 +261,7 @@ def run_rolling_recalibration_experiment(
     rebalance_by_strategy: dict[str, list[int]] = {s: [] for s in strategies}
     representative_path_values: dict[str, list[float]] = {}
     representative_contracts = None
-    window_summaries = []
+    window_summaries: list[dict] = []
     used_calibration_dates: set[str] = set()
 
     for start_idx, start_date_s in enumerate(valuation_dates):

@@ -209,10 +209,14 @@ def generate_visual_artifacts(
     hedging_result: dict,
     rolling_result: dict,
     output_dir: str | Path,
+    file_prefix: str = "",
 ) -> list[str]:
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
     generated: list[str] = []
+
+    def _prefixed(name: str) -> str:
+        return f"{file_prefix}{name}" if file_prefix else name
 
     # 1) Smile fit visual for first maturity.
     first_surface = surface_result["per_maturity"][0]
@@ -248,7 +252,7 @@ def generate_visual_artifacts(
     series = [("Market IV", "#1f77b4", market_ivs), ("SVI fit", "#ff7f0e", svi_ivs)]
     if sabr_ivs is not None:
         series.append(("SABR fit", "#2ca02c", sabr_ivs))
-    smile_path = out / "fig_smile_fit.svg"
+    smile_path = out / _prefixed("fig_smile_fit.svg")
     _line_chart(
         path=smile_path,
         title=f"Implied Volatility Smile Fit (T={maturity:.3f})",
@@ -262,7 +266,7 @@ def generate_visual_artifacts(
     # 2) Model RMSE bar chart.
     summary = model_result["summary"]
     categories = ["In-sample", "Out-of-sample CV"]
-    rmse_path = out / "fig_model_rmse.svg"
+    rmse_path = out / _prefixed("fig_model_rmse.svg")
     _bar_chart(
         path=rmse_path,
         title="SVI vs SABR RMSE Comparison",
@@ -293,7 +297,7 @@ def generate_visual_artifacts(
     terminals = hedging_result.get("terminal_pnl_by_strategy", {})
     if terminals:
         for strategy, vals in terminals.items():
-            hist_path = out / f"fig_terminal_pnl_hist_{strategy}.svg"
+            hist_path = out / _prefixed(f"fig_terminal_pnl_hist_{strategy}.svg")
             _histogram(
                 path=hist_path,
                 title=f"Terminal P&L Distribution ({strategy})",
@@ -307,9 +311,9 @@ def generate_visual_artifacts(
     rmse_by_date = rolling_result["calibration_quality"]["per_date_rmse"]
     if rmse_by_date:
         ordered_dates = sorted(rmse_by_date.keys())
-        xs = list(range(len(ordered_dates)))
+        xs = [float(i) for i in range(len(ordered_dates))]
         ys = [rmse_by_date[d] for d in ordered_dates]
-        rolling_path = out / "fig_rolling_rmse_trend.svg"
+        rolling_path = out / _prefixed("fig_rolling_rmse_trend.svg")
         _line_chart(
             path=rolling_path,
             title="Rolling Calibration RMSE Trend",

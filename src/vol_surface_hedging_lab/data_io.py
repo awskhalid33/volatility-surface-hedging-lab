@@ -4,7 +4,6 @@ from pathlib import Path
 
 from .types import OptionQuote
 
-
 REQUIRED_COLUMNS = {
     "valuation_date",
     "expiry",

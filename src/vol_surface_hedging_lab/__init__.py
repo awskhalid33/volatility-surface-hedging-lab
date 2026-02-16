@@ -1,4 +1,4 @@
-"""Research toolkit for volatility surface modeling and hedging."""
+"""Research toolkit for volatility surface modelling and hedging."""
 
 from .black_scholes import (
     bs_call_delta,
@@ -13,8 +13,8 @@ from .rolling import (
     run_rolling_recalibration_experiment,
 )
 from .sabr import SABRParams, fit_sabr_from_observations, sabr_implied_vol
-from .svi import SVIParams, fit_svi_from_observations, svi_total_variance
 from .surface import SVISurfaceModel
+from .svi import SVIParams, fit_svi_from_observations, svi_total_variance
 from .visualisation import generate_visual_artifacts
 from .yahoo_data import fetch_yahoo_option_chain_rows
 

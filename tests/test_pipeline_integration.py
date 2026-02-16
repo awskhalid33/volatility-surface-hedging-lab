@@ -19,8 +19,8 @@ from vol_surface_hedging_lab.visualisation import generate_visual_artifacts
 
 
 def _build_sample_rows() -> list[dict[str, str]]:
-    from datetime import timedelta
     import math
+    from datetime import timedelta
 
     valuation = date(2026, 2, 15)
     spot = 100.0

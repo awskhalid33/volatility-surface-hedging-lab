@@ -1,11 +1,16 @@
 import json
 import math
+import ssl
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 
-
-YAHOO_OPTIONS_URL = "https://query2.finance.yahoo.com/v7/finance/options/{ticker}"
+YAHOO_OPTIONS_URLS = (
+    "https://query2.finance.yahoo.com/v7/finance/options/{ticker}",
+    "https://query1.finance.yahoo.com/v7/finance/options/{ticker}",
+)
 
 
 def _safe_mid(bid: float, ask: float, last: float) -> float | None:
@@ -20,7 +25,16 @@ def _safe_mid(bid: float, ask: float, last: float) -> float | None:
     return None
 
 
-def _fetch_json(url: str, timeout_sec: float = 20.0) -> dict:
+def _fetch_json(
+    url: str,
+    timeout_sec: float = 20.0,
+    allow_insecure_ssl_fallback: bool = True,
+    max_retries: int = 3,
+    retry_backoff_sec: float = 0.8,
+) -> dict:
+    if max_retries <= 0:
+        raise ValueError("max_retries must be positive")
+
     req = urllib.request.Request(
         url,
         headers={
@@ -31,9 +45,35 @@ def _fetch_json(url: str, timeout_sec: float = 20.0) -> dict:
             )
         },
     )
-    with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
-        body = resp.read().decode("utf-8")
-    return json.loads(body)
+
+    def _read_json(context=None) -> dict:
+        with urllib.request.urlopen(req, timeout=timeout_sec, context=context) as resp:
+            body = resp.read().decode("utf-8")
+        return json.loads(body)
+
+    retryable_http_codes = {429, 500, 502, 503, 504}
+    for attempt in range(max_retries):
+        is_final_attempt = attempt == max_retries - 1
+        try:
+            return _read_json()
+        except urllib.error.HTTPError as exc:
+            if exc.code in retryable_http_codes and not is_final_attempt:
+                time.sleep(retry_backoff_sec * float(attempt + 1))
+                continue
+            raise
+        except urllib.error.URLError as exc:
+            reason = getattr(exc, "reason", None)
+            if allow_insecure_ssl_fallback and isinstance(reason, ssl.SSLCertVerificationError):
+                try:
+                    return _read_json(context=ssl._create_unverified_context())
+                except urllib.error.HTTPError as http_exc:
+                    if http_exc.code in retryable_http_codes and not is_final_attempt:
+                        time.sleep(retry_backoff_sec * float(attempt + 1))
+                        continue
+                    raise
+            raise
+
+    raise RuntimeError("Unreachable state while fetching JSON")
 
 
 def _extract_result(payload: dict) -> dict:
@@ -102,19 +142,37 @@ def fetch_yahoo_option_chain_rows(
         raise ValueError("max_expiries must be positive")
 
     encoded_ticker = urllib.parse.quote(ticker.upper())
-    base_url = YAHOO_OPTIONS_URL.format(ticker=encoded_ticker)
+    rows: list[dict[str, str]] = []
+    expiration_dates: list[int] = []
+    base_url = ""
+    last_error: Exception | None = None
 
-    first_payload = _fetch_json(base_url, timeout_sec=timeout_sec)
-    first_result = _extract_result(first_payload)
-    first_rows, expiration_dates = _extract_rows_from_result(first_result, ticker)
-    rows = list(first_rows)
+    for template in YAHOO_OPTIONS_URLS:
+        candidate_url = template.format(ticker=encoded_ticker)
+        try:
+            first_payload = _fetch_json(candidate_url, timeout_sec=timeout_sec)
+            first_result = _extract_result(first_payload)
+            first_rows, expiration_dates = _extract_rows_from_result(first_result, ticker)
+            rows = list(first_rows)
+            base_url = candidate_url
+            last_error = None
+            break
+        except Exception as exc:  # pragma: no cover - exercised in integration use.
+            last_error = exc
+            continue
+
+    if not base_url:
+        raise RuntimeError(f"Failed to fetch option chain for {ticker.upper()}: {last_error}")
 
     for expiry_epoch in expiration_dates[: max(0, max_expiries - 1)]:
         url = f"{base_url}?date={expiry_epoch}"
-        payload = _fetch_json(url, timeout_sec=timeout_sec)
-        result = _extract_result(payload)
-        more_rows, _ = _extract_rows_from_result(result, ticker)
-        rows.extend(more_rows)
+        try:
+            payload = _fetch_json(url, timeout_sec=timeout_sec)
+            result = _extract_result(payload)
+            more_rows, _ = _extract_rows_from_result(result, ticker)
+            rows.extend(more_rows)
+        except Exception:
+            continue
 
     dedup = {}
     for r in rows:

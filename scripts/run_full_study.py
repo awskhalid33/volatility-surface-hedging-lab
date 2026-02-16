@@ -6,8 +6,8 @@ from vol_surface_hedging_lab.backtest import (
     render_backtest_markdown,
     run_hedging_experiment,
 )
-from vol_surface_hedging_lab.data_io import load_option_quotes, write_json
 from vol_surface_hedging_lab.black_scholes import bs_call_price
+from vol_surface_hedging_lab.data_io import load_option_quotes, write_json
 from vol_surface_hedging_lab.model_comparison import (
     render_model_comparison_markdown,
     run_model_comparison,
@@ -32,8 +32,8 @@ def _write_rows(rows: list[dict[str, str]], path: Path) -> None:
 
 
 def _build_sample_rows() -> list[dict[str, str]]:
-    from datetime import date, timedelta
     import math
+    from datetime import date, timedelta
 
     valuation = date(2026, 2, 15)
     spot = 100.0

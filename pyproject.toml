@@ -11,6 +11,13 @@ requires-python = ">=3.11"
 authors = [{ name = "Aws Khalid" }]
 dependencies = []
 
+[project.optional-dependencies]
+dev = [
+  "mypy>=1.8.0",
+  "pytest>=8.0.0",
+  "ruff>=0.5.0",
+]
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]

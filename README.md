@@ -2,92 +2,133 @@
 
 Personal quantitative research project for option-surface modelling, model comparison, dynamic hedging, and rolling out-of-sample evaluation.
 
-## Project Overview
+## What this project does
 
-This repository builds an end-to-end derivatives research pipeline:
+1. Converts option prices to implied volatility.
+2. Runs static no-arbitrage diagnostics.
+3. Calibrates `SVI` and `SABR` smiles using bounded multi-start optimisation.
+4. Compares models in-sample and out-of-sample with cross-validation.
+5. Backtests `unhedged`, `delta`, and `delta-vega` hedging with transaction costs.
+6. Runs a rolling recalibration experiment.
+7. Produces JSON, Markdown, and SVG artefacts.
 
-1. Convert option prices to implied volatility.
-2. Run static no-arbitrage checks.
-3. Calibrate smile models (`SVI`, `SABR`) using optimisation-based fitting.
-4. Compare models in-sample and out-of-sample.
-5. Backtest hedging policies (`unhedged`, `delta`, `delta-vega`) with transaction costs.
-6. Recalibrate surfaces through rolling windows and evaluate stability.
-7. Generate visual artefacts (SVG plots) alongside JSON and Markdown reports.
+## Core upgrades in this version
 
-## What Was Upgraded
+- **Implied-vol solver upgrade**: `implied_volatility_call` now uses hybrid Newton-Raphson (with vega) plus bracketed bisection fallback.
+- **Optimisation upgrade**: bounded Levenberg-Marquardt now includes Marquardt diagonal scaling and trust-region-style step control.
+- **Real-data pathway upgrade**:
+  - Yahoo workflow now includes retry/backoff and endpoint failover.
+  - `run_live_snapshot_study.py` accepts `--input-csv` so real-data case studies can run from local snapshots.
+  - Added `build_public_spy_case_data.py` to build a real SPY snapshot dataset from public files.
+- **Engineering quality upgrade**:
+  - CI workflow added: `.github/workflows/ci.yml`
+  - lint config added: `ruff.toml`
+  - type-check config added: `mypy.ini`
+  - stronger tests for optimisation, visualisation, IV edge cases, data I/O failures, and Yahoo SSL fallback.
 
-- Replaced random-search-only calibration with bounded Levenberg–Marquardt optimisation (multi-start).
-- Refactored duplicated hedging/statistics logic into a shared module.
-- Added visualisation outputs:
-  - smile fit chart
-  - model RMSE comparison chart
-  - terminal P&L histograms
-  - rolling calibration RMSE trend
-- Added stronger tests:
-  - near-ATM SABR stability case
-  - extreme-moneyness SVI case
-  - integration test covering the full workflow on a compact dataset
+## Quick start
 
-## Synthetic Benchmark Results
+Install project + dev tooling:
 
-These figures come from the latest deterministic synthetic run:
+```bash
+python3 -m pip install -e ".[dev]"
+```
+
+Run synthetic full study:
 
 ```bash
 PYTHONPATH=src python3 scripts/run_full_study.py
 ```
 
-### 1) Static arbitrage diagnostics
-
-- Monotonicity violations: `0`
-- Convexity violations: `0`
-- Calendar total-variance violations: `0`
-
-### 2) Model comparison (`SVI` vs `SABR`, 3-fold CV)
-
-- In-sample RMSE (IV): `SVI=0.00025257`, `SABR=0.00406937`
-- Out-of-sample CV RMSE (IV): `SVI=0.00267168`, `SABR=0.00666528`
-- In-sample winner: `SVI`
-- Out-of-sample winner: `SVI`
-
-### 3) Dynamic hedging (400 paths)
-
-- `delta` standard-deviation reduction vs unhedged: `89.65%`
-- `delta-vega` standard-deviation reduction vs unhedged: `86.38%`
-- ES 95%:
-  - unhedged: `-27.406009`
-  - delta: `-4.111110`
-  - delta-vega: `-2.749126`
-
-### 4) Rolling recalibration (25 windows)
-
-- Average calibration RMSE(w): `0.00013942`
-- Standard-deviation reduction vs unhedged:
-  - delta: `41.65%`
-  - delta-vega: `88.95%`
-
-## Synthetic vs Live Results
-
-- The benchmark numbers above are **synthetic** and deterministic (reproducible).
-- A dedicated **live snapshot** workflow is included for real market data.
-- Keep synthetic and live reports separate when presenting conclusions.
-
-## One-Command Reproduction
-
-Run the full synthetic study:
+Run quality checks:
 
 ```bash
-PYTHONPATH=src python3 scripts/run_full_study.py
+ruff check .
+mypy
+pytest -q
 ```
 
-Produced reports:
+## Reproducible real-data case study
+
+Build a public real SPY snapshot dataset (valuation date `2020-07-05`):
+
+```bash
+PYTHONPATH=src python3 scripts/build_public_spy_case_data.py \
+  --output data/public_spy_snapshot_2020-07-05.csv
+```
+
+Run the live-study pipeline from that local CSV:
+
+```bash
+PYTHONPATH=src python3 scripts/run_live_snapshot_study.py \
+  --ticker SPY \
+  --input-csv data/public_spy_snapshot_2020-07-05.csv \
+  --output-dir outputs \
+  --paths 300 \
+  --steps 120
+```
+
+Public source files used by the builder script:
+
+- [SPY 2020-07-10 options snapshot](https://raw.githubusercontent.com/cantaro86/Financial-Models-Numerical-Methods/master/data/spy-options-exp-2020-07-10-weekly-show-all-stacked-07-05-2020.csv)
+- [SPY 2021-01-15 options snapshot](https://raw.githubusercontent.com/cantaro86/Financial-Models-Numerical-Methods/master/data/spy-options-exp-2021-01-15-weekly-show-all-stacked-07-05-2020.csv)
+
+## Key results
+
+### A) Synthetic benchmark (`scripts/run_full_study.py`)
+
+- Arbitrage diagnostics:
+  - Monotonicity violations: `0`
+  - Convexity violations: `0`
+  - Calendar total-variance violations: `0`
+- Model comparison (`SVI` vs `SABR`, 3-fold CV):
+  - In-sample RMSE (IV): `SVI=0.00025257`, `SABR=0.00406938`
+  - Out-of-sample CV RMSE (IV): `SVI=0.00267081`, `SABR=0.00666528`
+  - Winners: in-sample `SVI`, out-of-sample `SVI`
+- Dynamic hedging (400 paths):
+  - `delta` standard-deviation reduction vs unhedged: `89.65%`
+  - `delta-vega` standard-deviation reduction vs unhedged: `86.38%`
+  - ES 95%:
+    - unhedged: `-27.406009`
+    - delta: `-4.111097`
+    - delta-vega: `-2.749096`
+- Rolling recalibration (25 windows):
+  - Average calibration RMSE(w): `0.00014027`
+  - Standard-deviation reduction vs unhedged:
+    - delta: `41.65%`
+    - delta-vega: `88.95%`
+
+### B) Real-data case (`data/public_spy_snapshot_2020-07-05.csv`)
+
+- Dataset summary:
+  - Quotes: `264`
+  - Maturities: `2`
+- Arbitrage diagnostics:
+  - Monotonicity violations: `1`
+  - Convexity violations: `54`
+  - Calendar total-variance violations: `0`
+- Model comparison (`SVI` vs `SABR`, 3-fold CV):
+  - In-sample RMSE (IV): `SVI=0.00065403`, `SABR=0.03483466`
+  - Out-of-sample CV RMSE (IV): `SVI=0.01275583`, `SABR=0.03482615`
+  - Winners: in-sample `SVI`, out-of-sample `SVI`
+- Dynamic hedging (300 paths):
+  - `delta` standard-deviation reduction vs unhedged: `90.01%`
+  - `delta-vega` standard-deviation reduction vs unhedged: `85.44%`
+  - ES 95%:
+    - unhedged: `-103.527269`
+    - delta: `-12.439165`
+    - delta-vega: `-10.127254`
+
+This real-data run intentionally demonstrates that market data is messy and can contain static-shape violations, while the pipeline still runs end-to-end.
+
+## Output artefacts
+
+Synthetic outputs:
 
 - `outputs/surface_report.md`
 - `outputs/model_comparison_report.md`
 - `outputs/hedging_backtest_report.md`
 - `outputs/rolling_recalibration_report.md`
-
-Produced visual artefacts:
-
 - `outputs/fig_smile_fit.svg`
 - `outputs/fig_model_rmse.svg`
 - `outputs/fig_terminal_pnl_hist_unhedged.svg`
@@ -95,78 +136,20 @@ Produced visual artefacts:
 - `outputs/fig_terminal_pnl_hist_delta-vega.svg`
 - `outputs/fig_rolling_rmse_trend.svg`
 
-## Live Snapshot Workflow
-
-Run a live single-snapshot study from Yahoo Finance:
-
-```bash
-PYTHONPATH=src python3 scripts/run_live_snapshot_study.py \
-  --ticker SPY \
-  --output-dir outputs \
-  --max-expiries 4 \
-  --paths 300 \
-  --steps 120
-```
-
-This produces:
+Real-case outputs:
 
 - `outputs/live_surface_report.md`
 - `outputs/live_model_comparison_report.md`
 - `outputs/live_hedging_backtest_report.md`
+- `outputs/live_fig_smile_fit.svg`
+- `outputs/live_fig_model_rmse.svg`
+- `outputs/live_fig_terminal_pnl_hist_unhedged.svg`
+- `outputs/live_fig_terminal_pnl_hist_delta.svg`
+- `outputs/live_fig_terminal_pnl_hist_delta-vega.svg`
 
-## Component Commands
+## Data schema
 
-Generate synthetic sample chain:
-
-```bash
-PYTHONPATH=src python3 scripts/generate_sample_data.py
-```
-
-Surface report:
-
-```bash
-PYTHONPATH=src python3 scripts/run_research_pipeline.py \
-  --input data/sample_option_chain.csv \
-  --output-dir outputs
-```
-
-Model comparison report:
-
-```bash
-PYTHONPATH=src python3 scripts/run_model_comparison.py \
-  --input data/sample_option_chain.csv \
-  --output-dir outputs
-```
-
-Hedging report:
-
-```bash
-PYTHONPATH=src python3 scripts/run_hedging_backtest.py \
-  --input data/sample_option_chain.csv \
-  --output-dir outputs
-```
-
-Rolling study:
-
-```bash
-PYTHONPATH=src python3 scripts/generate_historical_data.py \
-  --output data/historical_option_chain.csv \
-  --valuation-days 180
-
-PYTHONPATH=src python3 scripts/run_rolling_recalibration.py \
-  --input data/historical_option_chain.csv \
-  --output-dir outputs
-```
-
-Generate charts from existing JSON outputs:
-
-```bash
-PYTHONPATH=src python3 scripts/generate_visuals.py --output-dir outputs
-```
-
-## Data Format
-
-Required CSV fields:
+Required CSV columns:
 
 - `valuation_date` (YYYY-MM-DD)
 - `expiry` (YYYY-MM-DD)
@@ -177,19 +160,9 @@ Required CSV fields:
 - `strike`
 - `call_mid`
 
-## Test Suite
+## Limitations
 
-Run tests:
-
-```bash
-PYTHONPATH=src pytest -q
-```
-
-The suite includes unit tests, calibration edge cases, and a compact end-to-end integration test.
-
-## Current Limitations
-
-- Synthetic history is still the default benchmark dataset.
-- Live-data workflow is snapshot-based rather than a long historical archive.
+- Public real-data case uses static snapshots rather than a full live archive.
 - `SABR` calibration currently uses fixed `beta`.
-- Microstructure details (full bid-ask filtering, liquidity constraints, trading calendars) are simplified.
+- Market microstructure handling is simplified (for example, no full liquidity filter stack).
+- Yahoo endpoints can rate-limit (`HTTP 429`); use `--input-csv` mode for reproducible runs.

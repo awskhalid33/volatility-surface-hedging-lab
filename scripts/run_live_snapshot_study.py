@@ -15,6 +15,7 @@ from vol_surface_hedging_lab.model_comparison import (
 from vol_surface_hedging_lab.pipeline import render_markdown_report, run_surface_pipeline
 from vol_surface_hedging_lab.surface import SVISurfaceModel
 from vol_surface_hedging_lab.synthetic_data import write_option_rows_csv
+from vol_surface_hedging_lab.visualisation import generate_visual_artifacts
 from vol_surface_hedging_lab.yahoo_data import fetch_yahoo_option_chain_rows
 
 
@@ -22,7 +23,16 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Fetch one live option snapshot and run surface/model/hedging analysis."
     )
-    parser.add_argument("--ticker", required=True, help="Ticker symbol, e.g. SPY")
+    parser.add_argument(
+        "--ticker",
+        default="SPY",
+        help="Ticker symbol, e.g. SPY (used for fetch mode and output labelling)",
+    )
+    parser.add_argument(
+        "--input-csv",
+        default=None,
+        help="Path to an existing option CSV. If provided, Yahoo fetch is skipped.",
+    )
     parser.add_argument("--output-dir", default="outputs", help="Output directory")
     parser.add_argument("--max-expiries", type=int, default=4, help="Number of expiries to fetch")
     parser.add_argument("--paths", type=int, default=300, help="MC paths for hedging simulation")
@@ -37,9 +47,14 @@ def main() -> None:
     data_dir = Path("data")
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    rows = fetch_yahoo_option_chain_rows(ticker=args.ticker, max_expiries=args.max_expiries)
-    live_csv = data_dir / f"live_option_chain_{args.ticker.upper()}.csv"
-    write_option_rows_csv(rows, live_csv)
+    if args.input_csv:
+        live_csv = Path(args.input_csv)
+        if not live_csv.exists():
+            raise FileNotFoundError(f"input CSV not found: {live_csv}")
+    else:
+        rows = fetch_yahoo_option_chain_rows(ticker=args.ticker, max_expiries=args.max_expiries)
+        live_csv = data_dir / f"live_option_chain_{args.ticker.upper()}.csv"
+        write_option_rows_csv(rows, live_csv)
     quotes = load_option_quotes(live_csv)
 
     surface = run_surface_pipeline(quotes, seed=11)
@@ -77,9 +92,22 @@ def main() -> None:
         encoding="utf-8",
     )
 
+    visuals = generate_visual_artifacts(
+        surface_result=surface,
+        model_result=model,
+        hedging_result=hedging,
+        rolling_result={"calibration_quality": {"per_date_rmse": {}}},
+        output_dir=out,
+        file_prefix="live_",
+    )
+
     print(f"Ticker: {args.ticker.upper()}")
-    print(f"Wrote live snapshot CSV: {live_csv}")
+    if args.input_csv:
+        print(f"Using input CSV: {live_csv}")
+    else:
+        print(f"Wrote live snapshot CSV: {live_csv}")
     print(f"Wrote live study artefacts in {out}")
+    print(f"Generated {len(visuals)} live visual files.")
 
 
 if __name__ == "__main__":

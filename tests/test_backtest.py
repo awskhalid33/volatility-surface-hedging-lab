@@ -1,6 +1,6 @@
 from vol_surface_hedging_lab.backtest import HedgingConfig, run_hedging_experiment
-from vol_surface_hedging_lab.svi import SVIParams
 from vol_surface_hedging_lab.surface import SVISurfaceModel
+from vol_surface_hedging_lab.svi import SVIParams
 
 
 def test_delta_hedging_reduces_terminal_pnl_std_in_controlled_case():
